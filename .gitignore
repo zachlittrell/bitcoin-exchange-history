@@ -1,5 +1,7 @@
 *.gem
 *.rbc
+*.csv
+*.json
 .bundle
 .config
 coverage
