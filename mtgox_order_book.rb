@@ -1,33 +1,45 @@
-#!/usr/bin/ruby
 require 'csv'
-require 'date'
-require 'json'
-require 'open-uri'
+require 'sqlite3'
 
-MTGOX_URL = "https://data.mtgox.com/api/1/BTCUSD/depth/full"
-ORDERBOOK_JSON = "mtgox_orderbook.json"
-OUTPUT_ASK_CSV = "mtgox_ask_output.csv"
-OUTPUT_BID_CSV = "mtgox_bid_outpt.csv"
+puts "Opening database..."
+order_book = SQLite3::Database.new("dump.sql")
+order_book.results_as_hash=true
 
-if File.exists? ORDERBOOK_JSON
-  orderbook = JSON::load(open ORDERBOOK_JSON)
-else
-  orderbook = JSON::load(open MTGOX_URL)
-  File.open(ORDERBOOK_JSON, "w") do |out|
-    JSON::dump orderbook, out
-  end
-end
+puts "Finding all possible currencies..."
+currencies = order_book.execute("select distinct currency__ 
+			       	 from dump")
+                       .map{|order| order['Currency__']}
 
-def output_orders(filepath, orders)
-  CSV.open(filepath, "wb") do |csv|
-    csv << ["Date","Price","Amount"]
-    orders.each do |order|
-      csv << [Time.at(order["stamp"].to_i * 1e-6).utc.to_s,
-	      order["price"].to_s,
-	      order["amount"].to_s]
+#Apparently, prices in JPY and SEK are stored differently than other 
+#currencies
+PRICE_UNIT = Hash.new(0.00001)
+PRICE_UNIT["JPY"] = 0.001
+PRICE_UNIT["SEK"] = 0.001
+PRICE_UNIT["BTC"] = 0.00000001 
+
+currencies.each do |currency|
+  ["ask","bid"].each do |type|
+
+    puts "Recording #{currency} #{type} orders..."
+
+    CSV.open("mtgox-#{currency}-#{type}-orders.csv",'wb') do |csv|
+      csv << ["Date","Num_Of_Orders","Bitcoin_Total","Price_Total"]
+
+      puts "Acquiring orders..."
+
+      order_book.execute("
+        SELECT strftime('%Y-%m-%d',Date),
+               COUNT(1),
+               SUM(Amount)*#{PRICE_UNIT["BTC"]},
+               SUM(Price)*#{PRICE_UNIT[currency]}
+	       from dump
+        WHERE TYPE=='#{type}'
+	      and Currency__=='#{currency}'
+	      and \"Primary\"=='true'
+	GROUP BY strftime('%Y-%m-%d',Date)
+	ORDER BY strftime('%Y-%m-%d',Date)") do |day|
+	  csv << [day[0],day[1],day[2],day[3]]
+	end
     end
   end
 end
-
-output_orders OUTPUT_ASK_CSV, orderbook["return"]["asks"]
-output_orders OUTPUT_BID_CSV, orderbook["return"]["bids"]

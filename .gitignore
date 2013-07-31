@@ -1,6 +1,7 @@
 *.gem
 *.rbc
 *.csv
+*.sql
 *.json
 .bundle
 .config
