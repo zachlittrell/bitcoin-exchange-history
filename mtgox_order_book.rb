@@ -17,13 +17,16 @@ PRICE_UNIT["JPY"] = 0.001
 PRICE_UNIT["SEK"] = 0.001
 PRICE_UNIT["BTC"] = 0.00000001 
 
+Dir::mkdir "orderbook" unless Dir::exists? "orderbook"
+
 currencies.each do |currency|
   ["ask","bid"].each do |type|
 
     puts "Recording #{currency} #{type} orders..."
 
-    CSV.open("mtgox-#{currency}-#{type}-orders.csv",'wb') do |csv|
-      csv << ["Date","Num_Of_Orders","Bitcoin_Total","Price_Total"]
+    CSV.open(File.join("orderbook","mtgox-#{currency}-#{type}-orders.csv"),
+	     'wb') do |csv|
+      csv << ["Date","Num_Of_Orders","Bitcoins","Value"]
 
       puts "Acquiring orders..."
 
@@ -31,15 +34,15 @@ currencies.each do |currency|
         SELECT strftime('%Y-%m-%d',Date),
                COUNT(1),
                SUM(Amount)*#{PRICE_UNIT["BTC"]},
-               SUM(Price)*#{PRICE_UNIT[currency]}
+               SUM(Price*#{PRICE_UNIT[currency]}*Amount*#{PRICE_UNIT["BTC"]})
 	       from dump
-        WHERE TYPE=='#{type}'
-	      and Currency__=='#{currency}'
-	      and \"Primary\"=='true'
+        WHERE TYPE='#{type}'
+	      and Currency__='#{currency}'
+	      and \"Primary\"='true'
 	GROUP BY strftime('%Y-%m-%d',Date)
 	ORDER BY strftime('%Y-%m-%d',Date)") do |day|
 	  csv << [day[0],day[1],day[2],day[3]]
-	end
+      end
     end
   end
 end
